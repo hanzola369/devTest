@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Rooftop-Spitter-Game-Mobile</title>
+  <!-- Mobile viewport settings -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background-color: #333;
+      font-family: 'Courier New', monospace;
+      /* Prevent pull-to-refresh and overscroll effects */
+      overscroll-behavior-y: contain;
+    }
+    /* Make canvas scale nicely */
+    #gameContainer {
+        position: relative;
+        overflow: hidden;
+        /* Adjust width/max-width for mobile */
+        width: 98vw; /* Use most of viewport width */
+        max-width: 640px; /* Don't exceed original width on large screens */
+        aspect-ratio: 640 / 480; /* Maintain aspect ratio */
+        margin: auto; /* Center container if smaller than viewport */
+        border: 2px solid #111; /* Add border to container */
+    }
+    #gameCanvas {
+      border: none; /* Remove canvas border, container has one now */
+      background-color: #555;
+      display: block; /* Prevents extra space */
+      /* Make canvas fill the scaled container */
+      width: 100%;
+      height: 100%;
+    }
+    /* Adjust UI text for potentially smaller screens */
+     #scoreDisplay, #timeDisplay {
+        position: absolute;
+        color: white;
+        font-size: clamp(14px, 3vw, 20px); /* Responsive font size */
+        text-shadow: 1px 1px 2px black;
+        top: 2%;
+     }
+     #scoreDisplay { left: 2%; }
+     #timeDisplay { right: 2%; }
+     #pauseButton {
+        position: absolute;
+        top: 8%; /* Move pause down slightly */
+        right: 2%;
+        padding: clamp(3px, 1.5vw, 5px) clamp(6px, 2vw, 10px);
+        font-size: clamp(12px, 2.5vw, 16px);
+        background-color: #ff6600;
+        color: white;
+        border: none;
+        cursor: pointer;
+        font-family: 'Courier New', monospace;
+        z-index: 10;
+     }
+    #startScreen, #gameOverScreen, #pauseScreen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.8);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      text-align: center;
+      z-index: 15; /* Ensure screens are above game elements but below maybe some debug */
+      /* Responsive text */
+      font-size: clamp(14px, 3vw, 18px);
+    }
+     #startScreen h1, #gameOverScreen h1, #pauseScreen h1 {
+        font-size: clamp(20px, 5vw, 30px);
+     }
+    #gameOverScreen, #pauseScreen {
+      display: none; /* Initially hidden */
+    }
+    #startButton, #restartButton, #resumeButton {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: clamp(16px, 3.5vw, 18px);
+      background-color: #ff6600;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+    }
+    #startButton:hover, #restartButton:hover, #resumeButton:hover, #pauseButton:hover {
+       background-color: #e65c00; /* Darker orange on hover */
+    }
+    .speechBubble {
+      position: absolute;
+      background-color: white;
+      border: 1px solid black;
+      border-radius: 10px;
+      padding: 5px 10px;
+      font-size: clamp(10px, 2vw, 14px); /* Smaller bubbles on mobile */
+      font-family: 'Comic Sans MS', cursive, sans-serif;
+      color: black;
+      transform: translate(-50%, -110%);
+      white-space: nowrap;
+      z-index: 20;
+      opacity: 1;
+      transition: opacity 0.5s ease-out;
+    }
+    .speechBubble::after {
+      content: '';
+      position: absolute;
+      bottom: -9px;
+      left: 50%;
+      margin-left: -10px;
+      border-width: 10px 10px 0;
+      border-style: solid;
+      border-color: white transparent;
+    }
+    .speechBubble.fading {
+      opacity: 0;
+    }
+
+    /* --- Mobile Controls Styles --- */
+    #mobileControls {
+      position: absolute;
+      bottom: 2%; /* Position near the bottom */
+      left: 0;
+      width: 100%;
+      display: flex; /* Use flexbox for layout */
+      justify-content: space-between; /* Space out buttons */
+      padding: 0 3%; /* Padding on the sides */
+      box-sizing: border-box; /* Include padding in width */
+      z-index: 5; /* Below overlays, above canvas */
+      pointer-events: none; /* Container doesn't block touches to canvas below */
+    }
+
+    #mobileControls button {
+      padding: 15px 20px;
+      font-size: clamp(20px, 5vw, 28px); /* Responsive font size */
+      font-weight: bold;
+      background-color: rgba(255, 102, 0, 0.5); /* Semi-transparent orange */
+      color: rgba(255, 255, 255, 0.8); /* Semi-transparent white */
+      border: 2px solid rgba(255, 255, 255, 0.6);
+      border-radius: 50%; /* Circular buttons */
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      opacity: 0.7; /* Make them a bit transparent */
+      pointer-events: auto; /* Buttons should receive touches */
+      width: clamp(60px, 15vw, 80px); /* Responsive width */
+      height: clamp(60px, 15vw, 80px); /* Responsive height */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+
+      /* Prevent text selection on mobile when tapping */
+      -webkit-user-select: none; /* Safari */
+      -moz-user-select: none; /* Firefox */
+      -ms-user-select: none; /* IE 10+ */
+      user-select: none;
+      -webkit-tap-highlight-color: transparent; /* Remove tap highlight */
+    }
+     #mobileControls button:active {
+        background-color: rgba(200, 80, 0, 0.7); /* Darker when pressed */
+        opacity: 0.9;
+     }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <canvas id="gameCanvas" width="640" height="480"></canvas>
+    <div id="scoreDisplay">SCORE: 0/50</div>
+    <div id="timeDisplay">TIME: 60</div>
+    <button id="pauseButton">PAUSE</button>
+
+    <!-- Mobile Controls -->
+    <div id="mobileControls">
+        <button id="moveLeftButton">←</button>  <!-- Left Arrow -->
+        <button id="spitButton">SPIT</button>      <!-- Spit (Center) -->
+        <button id="moveRightButton">→</button> <!-- Right Arrow -->
+    </div>
+    <!-- End Mobile Controls -->
+
+    <div id="startScreen">
+      <h1>ROOFTOP SPITTER</h1>
+      <p>Use On-Screen Buttons</p>
+      <p>Press P or TAP PAUSE to pause/resume</p>
+      <button id="startButton">START GAME</button>
+    </div>
+
+    <div id="gameOverScreen">
+      <h1 id="gameOverTitle">GAME OVER</h1>
+      <p id="finalScore">Your score: 0/50</p>
+      <button id="restartButton">PLAY AGAIN</button>
+    </div>
+
+    <div id="pauseScreen">
+      <h1>GAME PAUSED</h1>
+      <button id="resumeButton">RESUME GAME</button>
+    </div>
+    <!-- Speech bubbles will be added here dynamically -->
+  </div>
+
+  <script>
+    // Game variables
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreDisplay = document.getElementById('scoreDisplay');
+    const timeDisplay = document.getElementById('timeDisplay');
+    const startScreen = document.getElementById('startScreen');
+    const startButton = document.getElementById('startButton');
+    const gameOverScreen = document.getElementById('gameOverScreen');
+    const restartButton = document.getElementById('restartButton');
+    const finalScore = document.getElementById('finalScore');
+    const gameOverTitle = document.getElementById('gameOverTitle');
+    const pauseButton = document.getElementById('pauseButton');
+    const pauseScreen = document.getElementById('pauseScreen');
+    const resumeButton = document.getElementById('resumeButton');
+    const gameContainer = document.getElementById('gameContainer'); // Get container for bubbles and touch prevention
+
+    // Sound effects (Text for speech bubbles)
+    const hitSounds = [
+      "Ouch!", "Ow!", "Hey!", "Gross!", "Eww!", "My Hair!", "Watch it!", "Why?!"
+    ];
+
+    // Speech bubbles array
+    let speechBubbles = [];
+
+    // Game state
+    let gameRunning = false;
+    let gamePaused = false;
+    let score = 0;
+    let maxScore = 50;
+    let timeLeft = 60;
+    let gameTimer;
+    let animationFrameId; // To store requestAnimationFrame ID for cancellation
+    let frameCount = 0;
+
+    // Player
+    const player = {
+      x: canvas.width / 2 - 20, y: 50, width: 40, height: 60, speed: 4,
+      skinTone: '#E0AC69', hairColor: '#4A2C14', shirtColor: '#3498DB', pantsColor: '#34495E',
+      moving: false, direction: 0, isSpitting: false, spitTimer: 0, drawY: 50
+    };
+
+    // Spit projectiles
+    let spits = [];
+
+    // Pedestrians
+    let pedestrians = [];
+    const pedestrianColors = ['#FF5733', '#33FF57', '#3357FF', '#FFFF33', '#FF33FF', '#33FFFF'];
+    const skinTones = ['#F5D5C5', '#EAC086', '#C68642', '#8D5524', '#A0522D'];
+    const hairColors = ['#090806', '#71491E', '#FFBF00', '#D2691E', '#A9A9A9', '#B8860B'];
+
+    // Controls - Changed to let!
+    let keys = {};
+
+    // --- Mobile Controls Elements ---
+    const moveLeftButton = document.getElementById('moveLeftButton');
+    const moveRightButton = document.getElementById('moveRightButton');
+    const spitButton = document.getElementById('spitButton');
+    const mobileControlsDiv = document.getElementById('mobileControls');
+
+    // --- Event Listeners ---
+
+    // Keyboard Listeners (Keep for desktop testing/use)
+    window.addEventListener('keydown', (e) => {
+      keys[e.key] = true; keys[e.code] = true;
+      if ((e.key === 'p' || e.key === 'P') && gameRunning) togglePause();
+      if ((e.code === 'Space') && gameRunning && !gamePaused && !player.isSpitting) triggerSpit();
+    });
+    window.addEventListener('keyup', (e) => {
+      keys[e.key] = false; keys[e.code] = false;
+    });
+
+    // Game Buttons
+    startButton.addEventListener('click', startGame);
+    restartButton.addEventListener('click', startGame);
+    pauseButton.addEventListener('click', togglePause); // Works for touch too
+    resumeButton.addEventListener('click', togglePause);
+
+    // Prevent scrolling/zooming when interacting with game container on mobile
+    function preventBehavior(e) {
+        // Allow interactions with buttons within the container
+        if (e.target.closest('#mobileControls button, #pauseButton, #startButton, #restartButton, #resumeButton')) {
+            return;
+        }
+         // Allow scrolling on overlay text if needed (might be complex)
+        // if(e.target.closest('#startScreen p')) { return }
+
+        e.preventDefault();
+    }
+    // Use touchstart for immediate prevention
+    gameContainer.addEventListener('touchstart', preventBehavior, { passive: false });
+    // Also prevent move for dragging effects
+    gameContainer.addEventListener('touchmove', preventBehavior, { passive: false });
+
+
+    // Mobile Button Touch Listeners
+    // Left Button
+    moveLeftButton.addEventListener('touchstart', (e) => {
+        e.preventDefault(); keys['ArrowLeft'] = true;
+    }, { passive: false });
+    moveLeftButton.addEventListener('touchend', (e) => {
+        e.preventDefault(); keys['ArrowLeft'] = false;
+    });
+     moveLeftButton.addEventListener('touchcancel', (e) => { // Handle interruption
+        keys['ArrowLeft'] = false;
+    });
+
+    // Right Button (Using Shift simulation)
+    moveRightButton.addEventListener('touchstart', (e) => {
+        e.preventDefault(); keys['Shift'] = true;
+    }, { passive: false });
+    moveRightButton.addEventListener('touchend', (e) => {
+        e.preventDefault(); keys['Shift'] = false;
+    });
+     moveRightButton.addEventListener('touchcancel', (e) => {
+        keys['Shift'] = false;
+    });
+
+    // Spit Button
+    spitButton.addEventListener('touchstart', (e) => {
+        e.preventDefault(); triggerSpit(); // Call common spit function
+    }, { passive: false });
+
+
+    // --- Helper Function for Spitting ---
+    function triggerSpit() {
+        if (gameRunning && !gamePaused && !player.isSpitting) {
+            player.isSpitting = true;
+            player.spitTimer = 15; // Duration frames
+            spits.push({
+                x: player.x + player.width / 2, y: player.drawY + 45,
+                width: 5, height: 7, speed: 6, active: true
+            });
+        }
+    }
+
+    // --- Speech Bubble Functions --- (Keep as before)
+    function createSpeechBubble(text, x, y, duration = 1500, pedestrianId = null) {
+        const bubble = document.createElement('div');
+        bubble.className = 'speechBubble';
+        bubble.textContent = text;
+        bubble.style.left = x + 'px';
+        bubble.style.top = y + 'px';
+        gameContainer.appendChild(bubble);
+        const speechObj = {
+            element: bubble, x: x, y: y, pedestrianId: pedestrianId,
+            removeTimeout: setTimeout(() => {
+                bubble.classList.add('fading');
+                setTimeout(() => removeSpeechBubble(speechObj), 500);
+            }, duration - 500)
+        };
+        speechBubbles.push(speechObj);
+    }
+    function updateSpeechBubbles() {
+        for (let i = 0; i < speechBubbles.length; i++) {
+            const bubble = speechBubbles[i];
+            if (bubble.pedestrianId !== null) {
+                const ped = pedestrians.find(p => p.id === bubble.pedestrianId);
+                if (ped) {
+                    bubble.element.style.left = (ped.x + ped.width / 2) + 'px';
+                    bubble.element.style.top = (ped.y - 15) + 'px';
+                } else { removeSpeechBubble(bubble); i--; }
+            }
+        }
+    }
+    function removeSpeechBubble(bubble) {
+        clearTimeout(bubble.removeTimeout);
+        if (bubble.element.parentNode === gameContainer) gameContainer.removeChild(bubble.element);
+        const index = speechBubbles.indexOf(bubble);
+        if (index !== -1) speechBubbles.splice(index, 1);
+    }
+    function clearAllSpeechBubbles() {
+        while (speechBubbles.length > 0) removeSpeechBubble(speechBubbles[0]);
+    }
+
+
+    // --- Game Functions ---
+    function togglePause() {
+        if (!gameRunning) return;
+        gamePaused = !gamePaused;
+        if (gamePaused) {
+            clearInterval(gameTimer);
+            cancelAnimationFrame(animationFrameId);
+            if (mobileControlsDiv) mobileControlsDiv.style.display = 'none'; // Hide controls
+            pauseScreen.style.display = 'flex';
+            pauseButton.textContent = 'RESUME';
+        } else {
+            startGameTimer();
+            if (mobileControlsDiv) mobileControlsDiv.style.display = 'flex'; // Show controls
+            pauseScreen.style.display = 'none';
+            pauseButton.textContent = 'PAUSE';
+            animationFrameId = requestAnimationFrame(gameLoop); // Resume loop
+        }
+    }
+
+    function startGameTimer() {
+      clearInterval(gameTimer);
+      gameTimer = setInterval(() => {
+        if (!gamePaused) {
+             timeLeft--;
+             updateTimeDisplay();
+             if (timeLeft <= 0) endGame(false);
+        }
+      }, 1000);
+    }
+
+    function startGame() {
+      console.log("startGame called");
+      // Reset state
+      score = 0; timeLeft = 60; gameRunning = true; gamePaused = false;
+      spits = []; pedestrians = []; frameCount = 0; keys = {};
+      clearAllSpeechBubbles();
+      // Reset player
+      player.x = canvas.width / 2 - player.width / 2; player.isSpitting = false;
+      player.spitTimer = 0; player.moving = false; player.direction = 0;
+
+      // Update UI visibility
+      if (startScreen) startScreen.style.display = 'none';
+      if (gameOverScreen) gameOverScreen.style.display = 'none';
+      if (pauseScreen) pauseScreen.style.display = 'none';
+      if (pauseButton) pauseButton.style.display = 'block';
+      if (scoreDisplay) scoreDisplay.style.display = 'block';
+      if (timeDisplay) timeDisplay.style.display = 'block';
+      if (mobileControlsDiv) mobileControlsDiv.style.display = 'flex'; // Show mobile controls
+
+      updateScoreDisplay(); updateTimeDisplay();
+      startGameTimer();
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = requestAnimationFrame(gameLoop);
+    }
+
+    function endGame(didWin) {
+      gameRunning = false; gamePaused = true;
+      clearInterval(gameTimer); cancelAnimationFrame(animationFrameId);
+
+      if (gameOverScreen) gameOverScreen.style.display = 'flex';
+      if (finalScore) finalScore.textContent = `Your score: ${score}/${maxScore}`;
+      if (gameOverTitle) gameOverTitle.textContent = didWin ? "YOU WIN!" : "GAME OVER";
+
+      // Hide in-game UI
+      if (pauseButton) pauseButton.style.display = 'none';
+      if (mobileControlsDiv) mobileControlsDiv.style.display = 'none'; // Hide mobile controls
+    }
+
+    function updateScoreDisplay() { if(scoreDisplay) scoreDisplay.textContent = `SCORE: ${score}/${maxScore}`; }
+    function updateTimeDisplay() { if(timeDisplay) timeDisplay.textContent = `TIME: ${timeLeft}`; }
+
+    function spawnPedestrian() {
+      const spawnChance = 0.015 + (0.01 * (60 - timeLeft) / 60);
+      if (Math.random() < spawnChance && pedestrians.length < 8) {
+        const direction = Math.random() < 0.5 ? -1 : 1;
+        const startX = direction === 1 ? -40 : canvas.width + 10;
+        const randomSpeed = 1 + Math.random() * 1.5;
+        pedestrians.push({
+          id: Date.now() + Math.random(), x: startX, y: canvas.height - 70,
+          width: 30, height: 50, speed: randomSpeed, direction: direction,
+          color: pedestrianColors[Math.floor(Math.random() * pedestrianColors.length)],
+          skinTone: skinTones[Math.floor(Math.random() * skinTones.length)],
+          hairColor: hairColors[Math.floor(Math.random() * hairColors.length)],
+          hit: false, hitTimer: 0, speechTimer: 0
+        });
+      }
+    }
+
+    function gameLoop() {
+      if (!gameRunning || gamePaused) return; // Stop loop if paused or ended
+
+      frameCount++;
+
+      // --- Update Logic ---
+      player.moving = false;
+      // Use Shift OR ArrowRight/KeyD for right movement
+      const moveRightPressed = keys['Shift'] || keys['ShiftLeft'] || keys['ShiftRight'] || keys['ArrowRight'] || keys['KeyD'];
+      const moveLeftPressed = keys['ArrowLeft'] || keys['KeyA'];
+
+      if (moveLeftPressed && player.x > 0) {
+        player.x -= player.speed; player.moving = true; player.direction = -1;
+      } else if (moveRightPressed && player.x < canvas.width - player.width) {
+        player.x += player.speed; player.moving = true; player.direction = 1;
+      } else {
+           player.direction = 0; // Reset direction if no move keys pressed
+      }
+
+      if (player.spitTimer > 0) player.spitTimer--; else player.isSpitting = false;
+
+      // Update spits
+       for (let i = spits.length - 1; i >= 0; i--) {
+            const spit = spits[i]; spit.y += spit.speed;
+            if (spit.y > canvas.height) spit.active = false;
+            if (!spit.active) spits.splice(i, 1);
+        }
+
+      // Update pedestrians
+      spawnPedestrian();
+      for (let i = pedestrians.length - 1; i >= 0; i--) {
+          const ped = pedestrians[i];
+          if (ped.hit) {
+              ped.hitTimer++;
+              if (ped.hitTimer > 40) { pedestrians.splice(i, 1); continue; }
+          } else { ped.x += ped.speed * ped.direction; }
+          if (ped.speechTimer > 0) ped.speechTimer -= 16;
+          if ((ped.direction === 1 && ped.x > canvas.width + ped.width + 20) ||
+              (ped.direction === -1 && ped.x < -ped.width - 20)) {
+              pedestrians.splice(i, 1);
+          }
+      }
+
+      checkCollisions();
+      updateSpeechBubbles();
+
+      // --- Drawing ---
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawBackground();
+      drawPedestrians();
+      drawPlayer();
+      drawSpits();
+
+      // --- Loop Continuation ---
+      animationFrameId = requestAnimationFrame(gameLoop);
+    }
+
+    // --- Drawing Functions --- (Keep as before)
+    function drawBackground() {
+        const skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height / 2 + 50);
+        skyGradient.addColorStop(0, '#87CEEB'); skyGradient.addColorStop(1, '#ADD8E6');
+        ctx.fillStyle = skyGradient; ctx.fillRect(0, 0, canvas.width, canvas.height / 2 + 50);
+        ctx.fillStyle = '#A0A0A0'; ctx.fillRect(50, 100, 100, canvas.height);
+        ctx.fillRect(250, 120, 80, canvas.height); ctx.fillRect(450, 90, 120, canvas.height);
+        ctx.fillStyle = '#606060'; ctx.fillRect(0, player.drawY - 10, canvas.width, 30);
+        ctx.fillStyle = '#8B4513'; ctx.fillRect(0, player.drawY + 20, canvas.width, 150);
+        ctx.fillStyle = '#ADD8E6';
+        for(let winY = player.drawY + 40; winY < player.drawY + 150; winY += 50) {
+           for(let winX = 30; winX < canvas.width - 50; winX += 80) ctx.fillRect(winX, winY, 50, 30); }
+        ctx.fillStyle = '#444444'; ctx.fillRect(0, canvas.height - 80, canvas.width, 80);
+        ctx.fillStyle = '#AAAAAA'; ctx.fillRect(0, canvas.height - 80, canvas.width, 20);
+        ctx.fillStyle = '#999999'; ctx.fillRect(0, canvas.height - 60, canvas.width, 10);
+        ctx.beginPath(); ctx.strokeStyle = '#FFFF00'; ctx.lineWidth = 4; ctx.setLineDash([20, 15]);
+        ctx.moveTo(0, canvas.height - 30); ctx.lineTo(canvas.width, canvas.height - 30); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 18px Courier New'; ctx.textAlign = 'center'; ctx.strokeStyle = 'black'; ctx.lineWidth = 2;
+        const buildingName = 'ROOFTOP HIGH'; ctx.strokeText(buildingName, canvas.width / 2, player.drawY + 45); ctx.fillText(buildingName, canvas.width / 2, player.drawY + 45);
+    }
+    function drawPlayer() {
+        const drawX = player.x; const drawY = player.drawY; const centerX = drawX + player.width / 2;
+        const bounceOffset = player.moving ? Math.sin(frameCount * 0.3) * 2 : 0; const currentY = drawY + bounceOffset;
+        ctx.fillStyle = player.pantsColor; const legWidth = 10; const legHeight = 25; const legY = currentY + 35;
+        if (player.moving) { const legAngle = Math.sin(frameCount * 0.3) * 0.4; ctx.save(); ctx.translate(drawX + 12, legY); ctx.rotate(legAngle); ctx.fillRect(-legWidth / 2, 0, legWidth, legHeight); ctx.restore(); ctx.save(); ctx.translate(drawX + player.width - 12, legY); ctx.rotate(-legAngle); ctx.fillRect(-legWidth / 2, 0, legWidth, legHeight); ctx.restore(); }
+        else { ctx.fillRect(drawX + 7, legY, legWidth, legHeight); ctx.fillRect(drawX + player.width - 17, legY, legWidth, legHeight); }
+        ctx.fillStyle = player.shirtColor; ctx.fillRect(drawX, currentY + 10, player.width, 30);
+        const armWidth = 8; const armHeight = 20; const armY = currentY + 15;
+        let leftArmAngle = player.moving ? Math.sin(frameCount * 0.3 + Math.PI) * 0.5 : -0.1; if (player.isSpitting) leftArmAngle = -0.8;
+        ctx.save(); ctx.translate(drawX + 5, armY); ctx.rotate(leftArmAngle); ctx.fillStyle = player.shirtColor; ctx.fillRect(-armWidth / 2, 0, armWidth, armHeight); ctx.fillStyle = player.skinTone; ctx.beginPath(); ctx.arc(0, armHeight, 4, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+        let rightArmAngle = player.moving ? Math.sin(frameCount * 0.3) * 0.5 : 0.1; if (player.isSpitting) rightArmAngle = 0.8;
+        ctx.save(); ctx.translate(drawX + player.width - 5, armY); ctx.rotate(rightArmAngle); ctx.fillStyle = player.shirtColor; ctx.fillRect(-armWidth / 2, 0, armWidth, armHeight); ctx.fillStyle = player.skinTone; ctx.beginPath(); ctx.arc(0, armHeight, 4, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+        const headY = currentY - 5; ctx.fillStyle = player.skinTone; ctx.beginPath(); ctx.arc(centerX, headY, 15, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#555'; ctx.lineWidth = 0.5; ctx.stroke();
+        ctx.fillStyle = player.hairColor; ctx.beginPath(); ctx.arc(centerX, headY, 15, Math.PI * 1.1, Math.PI * 1.9); ctx.lineTo(centerX + 8, headY - 14); ctx.lineTo(centerX, headY - 18); ctx.lineTo(centerX - 8, headY - 14); ctx.closePath(); ctx.fill();
+        const eyeY = headY - 2; ctx.fillStyle = 'white'; ctx.beginPath(); ctx.ellipse(centerX - 6, eyeY, 4, 5, 0, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.ellipse(centerX + 6, eyeY, 4, 5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'black'; const pupilOffsetX = player.direction * 1.5; const pupilOffsetY = 0; ctx.beginPath(); ctx.arc(centerX - 6 + pupilOffsetX, eyeY + pupilOffsetY, 2, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(centerX + 6 + pupilOffsetX, eyeY + pupilOffsetY, 2, 0, Math.PI * 2); ctx.fill();
+        const mouthY = headY + 7; ctx.strokeStyle = 'black'; ctx.lineWidth = 1.5; ctx.beginPath();
+        if (player.isSpitting) { ctx.ellipse(centerX, mouthY, 4, 3, 0, 0, Math.PI * 2); ctx.fillStyle = '#960018'; ctx.fill(); }
+        else { ctx.moveTo(centerX - 4, mouthY); ctx.lineTo(centerX + 4, mouthY); ctx.stroke(); }
+    }
+    function drawSpits() {
+      for (let i = 0; i < spits.length; i++) {
+        const spit = spits[i]; if (!spit.active) continue;
+        ctx.fillStyle = 'rgba(220, 255, 220, 0.8)'; ctx.beginPath(); ctx.ellipse(spit.x, spit.y, spit.width, spit.height, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(220, 255, 220, 0.5)'; ctx.beginPath(); ctx.arc(spit.x, spit.y - spit.height, spit.width * 0.5, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    function drawPedestrians() {
+      for (let i = 0; i < pedestrians.length; i++) {
+        const ped = pedestrians[i]; const centerX = ped.x + ped.width / 2; const walkCycleFrame = Math.floor(frameCount / 8) % 2;
+        ctx.fillStyle = '#444'; const legWidth = 8; const legHeight = 18; const legY = ped.y + ped.height - legHeight;
+        if (!ped.hit) { if (walkCycleFrame === 0) { ctx.fillRect(ped.x + 5, legY, legWidth, legHeight); ctx.fillRect(ped.x + ped.width - 5 - legWidth, legY, legWidth, legHeight / 1.5); } else { ctx.fillRect(ped.x + 5, legY, legWidth, legHeight / 1.5); ctx.fillRect(ped.x + ped.width - 5 - legWidth, legY, legWidth, legHeight); } }
+        else { ctx.fillRect(ped.x + 5, legY, legWidth, legHeight); ctx.fillRect(ped.x + ped.width - 5 - legWidth, legY, legWidth, legHeight); }
+        ctx.fillStyle = ped.color; ctx.fillRect(ped.x, ped.y + 10, ped.width, ped.height - 20);
+        const armWidth = 6; const armHeight = 15; const armY = ped.y + 15;
+        if (!ped.hit) { if (walkCycleFrame === 0) { ctx.fillRect(ped.x - armWidth / 2, armY, armWidth, armHeight); ctx.fillRect(ped.x + ped.width - armWidth / 2, armY, armWidth, armHeight); } else { ctx.fillRect(ped.x - armWidth / 2, armY, armWidth, armHeight); ctx.fillRect(ped.x + ped.width - armWidth / 2, armY, armWidth, armHeight); } }
+        else { ctx.fillRect(ped.x - armWidth / 2, armY, armWidth, armHeight); ctx.fillRect(ped.x + ped.width - armWidth / 2, armY, armWidth, armHeight); }
+        ctx.fillStyle = ped.skinTone; ctx.beginPath(); ctx.arc(ped.x, armY + armHeight, 3, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(ped.x + ped.width, armY + armHeight, 3, 0, Math.PI * 2); ctx.fill();
+        const headY = ped.y; ctx.fillStyle = ped.skinTone; ctx.beginPath(); ctx.arc(centerX, headY, 10, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = ped.hairColor; ctx.beginPath(); ctx.arc(centerX, headY, 10, Math.PI, 0); ctx.fill();
+        const faceY = headY;
+        if (ped.hit) { ctx.strokeStyle = 'black'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(centerX - 5, faceY - 3); ctx.lineTo(centerX - 1, faceY + 1); ctx.moveTo(centerX - 1, faceY - 3); ctx.lineTo(centerX - 5, faceY + 1); ctx.stroke(); ctx.beginPath(); ctx.moveTo(centerX + 1, faceY - 3); ctx.lineTo(centerX + 5, faceY + 1); ctx.moveTo(centerX + 5, faceY - 3); ctx.lineTo(centerX + 1, faceY + 1); ctx.stroke(); ctx.fillStyle = 'black'; ctx.beginPath(); ctx.arc(centerX, faceY + 5, 3, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = 'rgba(220, 255, 220, 0.8)'; ctx.beginPath(); ctx.arc(centerX + ped.direction * 3, headY - 2, 5, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.ellipse(centerX - ped.direction * 2, ped.y + 20, 4, 6, 0, 0, Math.PI * 2); ctx.fill(); }
+        else { ctx.fillStyle = 'black'; const eyeOffset = ped.direction * 2; ctx.beginPath(); ctx.arc(centerX - 3 + eyeOffset, faceY, 1.5, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(centerX + 3 + eyeOffset, faceY, 1.5, 0, Math.PI * 2); ctx.fill(); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(centerX - 2, faceY + 5); ctx.lineTo(centerX + 2, faceY + 5); ctx.strokeStyle = 'black'; ctx.stroke(); }
+      }
+    }
+
+    // --- Collision Detection ---
+    function checkCollisions() {
+      for (let i = spits.length - 1; i >= 0; i--) {
+        const spit = spits[i]; if (!spit.active) continue;
+        for (let j = pedestrians.length - 1; j >= 0; j--) {
+          const ped = pedestrians[j]; if (ped.hit) continue;
+          if (spit.x < ped.x + ped.width && spit.x + spit.width > ped.x && spit.y < ped.y + ped.height && spit.y + spit.height > ped.y) {
+            spit.active = false; ped.hit = true; ped.hitTimer = 0; ped.speed = ped.speed * 0.2;
+            if(gameRunning) {
+                 score++; updateScoreDisplay();
+                 if (ped.speechTimer <= 0) {
+                     const randomSound = hitSounds[Math.floor(Math.random() * hitSounds.length)];
+                     createSpeechBubble(randomSound, ped.x + ped.width / 2, ped.y - 10, 1500, ped.id);
+                     ped.speechTimer = 2000;
+                 }
+                 if (score >= maxScore) endGame(true);
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    // --- Initial Setup on Load ---
+    document.addEventListener('DOMContentLoaded', () => {
+        // Ensure UI elements hidden/shown correctly at the very start
+        if (gameOverScreen) gameOverScreen.style.display = 'none';
+        if (pauseScreen) pauseScreen.style.display = 'none';
+        if (pauseButton) pauseButton.style.display = 'none';
+        if (scoreDisplay) scoreDisplay.style.display = 'none';
+        if (timeDisplay) timeDisplay.style.display = 'none';
+        if (startScreen) startScreen.style.display = 'flex'; // Show start screen initially
+        if (mobileControlsDiv) mobileControlsDiv.style.display = 'none'; // Hide mobile controls initially
+    });
+
+  </script>
+</body>
+</html>
